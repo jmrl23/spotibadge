@@ -19,6 +19,7 @@ model Reference {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  code        String @unique
-  accessToken String @unique
+  code         String @unique
+  accessToken  String @unique
+  refreshToken String @unique
 }

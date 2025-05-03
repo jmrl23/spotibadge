@@ -9,6 +9,7 @@ import { SPOTIFY_CLIENT_ID, SPOTIFY_REDIRECT_URI } from '../../config/env';
 import scope from './config/scope.json';
 import { BadgeData } from './schema/badgeData.schema';
 import { accounts, api } from './util/axios';
+import ms from 'ms';
 
 type Reference = Prisma.ReferenceGetPayload<{
   select: {
@@ -17,6 +18,7 @@ type Reference = Prisma.ReferenceGetPayload<{
     updatedAt: true;
     code: true;
     accessToken: true;
+    refreshToken: true;
   };
 }>;
 
@@ -44,7 +46,10 @@ export class AppService {
     });
     if (existingReference) return await this.createReference(callbackCode);
 
-    const response = await accounts.post<{ access_token?: string }>(
+    const response = await accounts.post<{
+      access_token?: string;
+      refresh_token?: string;
+    }>(
       '/api/token',
       qs.stringify({
         code: callbackCode,
@@ -53,13 +58,16 @@ export class AppService {
       }),
     );
 
-    const { access_token: accessToken } = response.data;
-    if (!accessToken) throw new Unauthorized('Failed to generate tokens');
+    const { access_token: accessToken, refresh_token: refreshToken } =
+      response.data;
+    if (!accessToken || !refreshToken)
+      throw new Unauthorized('Failed to generate tokens');
 
     const reference = await this.prisma.reference.create({
       data: {
         code,
         accessToken,
+        refreshToken,
       },
       select: {
         id: true,
@@ -67,6 +75,7 @@ export class AppService {
         updatedAt: true,
         code: true,
         accessToken: true,
+        refreshToken: true,
       },
     });
     return reference;
@@ -128,10 +137,29 @@ export class AppService {
         updatedAt: true,
         code: true,
         accessToken: true,
+        refreshToken: true,
+      },
+    });
+    if (!reference) return null;
+
+    const response = await accounts.post<{ access_token?: string }>(
+      '/api/token',
+      qs.stringify({
+        grant_type: 'refresh_token',
+        refresh_token: reference.refreshToken,
+      }),
+    );
+    const { refreshToken } = await this.prisma.reference.update({
+      where: { id: reference.id },
+      data: {
+        accessToken: response.data.access_token,
       },
     });
 
-    if (reference) await this.cache.set(`reference:${code}`, reference);
+    reference.refreshToken = refreshToken;
+
+    if (reference)
+      await this.cache.set(`reference:${code}`, reference, ms('59m'));
     return reference;
   }
 
