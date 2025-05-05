@@ -149,14 +149,14 @@ export class AppService {
         refresh_token: reference.refreshToken,
       }),
     );
-    const { refreshToken } = await this.prisma.reference.update({
+    const { accessToken } = await this.prisma.reference.update({
       where: { id: reference.id },
       data: {
         accessToken: response.data.access_token,
       },
     });
 
-    reference.refreshToken = refreshToken;
+    reference.accessToken = accessToken;
 
     if (reference)
       await this.cache.set(`reference:${code}`, reference, ms('59m'));
